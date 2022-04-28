@@ -1,0 +1,22 @@
+/* Split the screen in half */
+.split {
+    height: 100%;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    overflow-x: hidden;
+}
+
+/* Control the left side */
+.master {
+    width: 100%;
+    left: 0;
+}
+
+/* Control the right side */
+.right {
+    z-index: 1;
+    width: 200pt;
+    right: 0;
+    background-color: rgba(220, 20, 60, 0.3);
+}
