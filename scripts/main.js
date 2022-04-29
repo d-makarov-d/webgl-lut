@@ -294,49 +294,23 @@ class TexturedCube extends TexturedFigure {
 	}
 
 	texCoords() {
-		return new Float32Array([
-			// Front
+		const face = [
 			0.0,  0.0,
 			1.0,  0.0,
 			1.0,  1.0,
 			0.0,  1.0,
-			// Back
-			0.0,  0.0,
-			1.0,  0.0,
-			1.0,  1.0,
-			0.0,  1.0,
-			// Top
-			0.0,  0.0,
-			1.0,  0.0,
-			1.0,  1.0,
-			0.0,  1.0,
-			// Bottom
-			0.0,  0.0,
-			1.0,  0.0,
-			1.0,  1.0,
-			0.0,  1.0,
-			// Right
-			0.0,  0.0,
-			1.0,  0.0,
-			1.0,  1.0,
-			0.0,  1.0,
-			// Left
-			0.0,  0.0,
-			1.0,  0.0,
-			1.0,  1.0,
-			0.0,  1.0,
-		])
+		]
+		let coords = []
+		for (let i=0; i<6; i++)
+			coords = coords.concat(face)
+		return new Float32Array(coords)
 	}
 
 	indices() {
-		return new Uint16Array([
-			0,  1,  2,      0,  2,  3,    // front
-			4,  5,  6,      4,  6,  7,    // back
-			8,  9,  10,     8,  10, 11,   // top
-			12, 13, 14,     12, 14, 15,   // bottom
-			16, 17, 18,     16, 18, 19,   // right
-			20, 21, 22,     20, 22, 23,   // left
-		]);
+		const inds = [0,  1,  2,      0,  2,  3];
+		return new Uint16Array(
+			[...Array(6).keys()].reduce((acc, i) => acc.concat(inds.map((e) => 4 * i + e)), [])
+		);
 	}
 }
 
