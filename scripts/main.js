@@ -11,19 +11,16 @@ function start() {
 
 	// Obtain shader program
 	const shaderProgram = compileShaderProgram(gl, vertexShader, fragmentShader);
+	const programFlat = compileShaderProgram(gl, vertexFlat, fragmentFlat);
 
-	if (gl) {
-		gl.clearColor(0.0, 0.0, 0.0, 1.0);
-		gl.enable(gl.DEPTH_TEST);
-		gl.depthFunc(gl.LEQUAL);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-	} else  {
+	if (!gl) {
 		alert("Unable to initialize WebGL. Your browser may not support it.");
 	}
 
-	// const figure = new TexturedCube(gl);
 	const figure = new TexturedCube(gl);
 	const texture = loadTexture(gl, 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/box_tex1.png');
+
+	const {fb: framebuffer, tx: fbTexture} = createFramebuffer(gl, canvas.width, canvas.height);
 
 	// Draw the scene repeatedly
 	function render(now) {
@@ -36,7 +33,11 @@ function start() {
 			rotX: (now * freqX) % (Math.PI * 2),
 			rotZ: (now * freqZ) % (Math.PI * 2),
 		}
-		drawSingleFigureScene(gl, shaderProgram, figure, texture, sceneConfig)
+
+		gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+		drawSingleFigureScene(gl, shaderProgram, figure, texture, sceneConfig);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		drawFromFramebuffer(gl, framebuffer, fbTexture,  programFlat);
 
 		requestAnimationFrame(render);
 	}
@@ -152,6 +153,48 @@ function drawSingleFigureScene(
 	)
 
 	gl.drawElements(gl.TRIANGLES, figure.vertexCount(), gl.UNSIGNED_SHORT, 0);
+}
+
+/**
+ * @param {RenderingContext} gl
+ * @param {WebGLFramebuffer} framebuffer
+ * @param {WebGLTexture} texture
+ * @param {WebGLProgram} program
+ */
+function drawFromFramebuffer(gl, framebuffer, texture, program) {
+	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+	gl.useProgram(program);
+
+	gl.activeTexture(gl.TEXTURE0);
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+	gl.uniform1i(gl.getUniformLocation(program, 'uSampler'), 0);
+
+	const vertex = [
+		-1, -1,
+		-1,  1,
+		 1,  1,
+		 1,  1,
+		 1, -1,
+		-1, -1,
+	];
+	const vertBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, vertBuffer);
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertex), gl.STATIC_DRAW);
+
+	const positionLocation = gl.getAttribLocation(program, "aPosition");
+	gl.vertexAttribPointer(
+		positionLocation,
+		2,					// N Components
+		gl.FLOAT,
+		false, // Normalize
+		0,					// Stride
+		0					// Offset
+	)
+	gl.enableVertexAttribArray(positionLocation);
+
+	gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
 // UTILITY FUNCTIONS
@@ -411,6 +454,47 @@ function loadTexture(gl, url) {
 	return texture;
 }
 
+/**
+ * Creates framebuffer with a texture which could be rendered to
+ * @param {RenderingContext} gl
+ * @param {Number} width
+ * @param {Number} height
+ * @return {{fb: WebGLFramebuffer, tx: WebGLTexture}}
+ */
+function createFramebuffer (gl, width, height) {
+	// create an empty texture
+	const texture = gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+	gl.texImage2D(
+		gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0,
+		gl.RGBA, gl.UNSIGNED_BYTE, null
+	);
+
+	// Create a framebuffer and attach a texture to it
+	const framebuffer = gl.createFramebuffer();
+	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+	gl.texImage2D(
+		gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0,
+		gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null
+	);
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, texture, 0);
+
+	// Attach depth buffer
+	const depthBuffer = gl.createRenderbuffer();
+	gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+	return {fb: framebuffer, tx: texture};
+}
+
 const vertexShader = `
     attribute vec4 aVertexPosition;
     attribute vec2 aTextureCoord;
@@ -424,7 +508,7 @@ const vertexShader = `
       gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
       vTextureCoord = aTextureCoord;
     }
-  `;
+`;
 
 const fragmentShader = `
     varying highp vec2 vTextureCoord;
@@ -434,4 +518,22 @@ const fragmentShader = `
     void main(void) {
       gl_FragColor = texture2D(uSampler, vTextureCoord);
     }
-  `;
+`;
+
+const vertexFlat = `
+    attribute vec4 aPosition;
+    varying vec2 vTextureCoord;
+
+    void main() {
+      gl_Position = aPosition;
+      vTextureCoord = aPosition.xy * 0.5 + 0.5;
+    }    
+`;
+const fragmentFlat = `
+		precision mediump float;
+		varying vec2 vTextureCoord;
+		uniform sampler2D uSampler;
+		void main() {
+    		gl_FragColor = texture2D(uSampler, vTextureCoord);
+		}
+`;
