@@ -1,7 +1,7 @@
-#WebGL Look Up Table task
+# WebGL Look Up Table task
 
-###Install
+### Install
 `git clone git clone https://github.com/d-makarov-d/webgl-lut.git`
 
-###Run
+### Run
 Open index.html in browser
