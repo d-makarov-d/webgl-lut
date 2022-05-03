@@ -10,8 +10,11 @@
 	<canvas id="glcanvas" class="split master" width="1280" height="960">
 		Your browser doesn't appear to support the HTML5 <code>&lt;canvas&gt;</code> element.
 	</canvas>
-	<div class="split right" id="btn_container">
-
+	<div class="split right">
+		<div id="btn_container" style="height: calc(100% - 50px)"></div>
+		<div style="height: 50px">
+			<input type="file" accept=".jpg, .png, .jpeg, .gif, .bmp, .tif" id="input" class="file_select">
+		</div>
 	</div>
 </body>
 <script src="scripts/gl-matrix-min.js"></script>

@@ -5,7 +5,6 @@ const { mat4 } = glMatrix;
  */
 function start() {
 	const canvas = document.getElementById("glcanvas");
-	const btnContainer = document.getElementById("btn_container");
 
 	// Init WebGL context
 	const gl = initWebGL(canvas);
@@ -18,7 +17,7 @@ function start() {
 		alert("Unable to initialize WebGL. Your browser may not support it.");
 	}
 
-	const textureHolder = new LUTTexturesHolder(gl, btnContainer);
+	const textureHolder = setUpLUTHandler(gl);
 
 	const figure = new TexturedCube(gl);
 	const texture = loadTexture(gl, 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/box_tex1.png');
@@ -212,7 +211,43 @@ function drawFromFramebuffer(
 	gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
-// UTILITY FUNCTIONS
+/**
+ *
+ */
+function setUpLUTHandler(gl) {
+	const btnContainer = document.getElementById("btn_container");
+	const textureHolder = new LUTTexturesHolder(gl, btnContainer);
+	const fileSelector = document.getElementById("input");
+
+	fileSelector.addEventListener("change", () => {
+		const file = fileSelector.files[0];
+		if (typeof file !== 'undefined'){
+			const reader = new FileReader();
+			reader.onload = () => {
+				const image = new Image();
+				image.onload = () => {textureHolder.addLUTFromImage(image, file.name);}
+				image.src = reader.result;
+			}
+			reader.readAsDataURL(file);
+		}
+	});
+	const lutAlien = new Image();
+	lutAlien.crossOrigin = 'anonymous';
+	lutAlien.onload = () => {textureHolder.addLUTFromImage(lutAlien, "Alien")}
+	lutAlien.src = 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/lut_alien.png';
+	const lutBW = new Image();
+	lutBW.crossOrigin = 'anonymous';
+	lutBW.onload = () => {textureHolder.addLUTFromImage(lutBW, "Black White")}
+	lutBW.src = 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/lut_bw.png';
+	const lutInfrared = new Image();
+	lutInfrared.crossOrigin = 'anonymous';
+	lutInfrared.onload = () => {textureHolder.addLUTFromImage(lutInfrared, "Infrared")}
+	lutInfrared.src = 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/lut_infrared.png';
+
+	return textureHolder;
+}
+
+// UTILITY FUNCTIONS -------------------------
 class TexturedFigure {
 	/**
 	 * @param {RenderingContext} gl
@@ -523,6 +558,7 @@ class LUTTexturesHolder {
 		this.buttons = [];
 		const neutralTexture = LUTTexturesHolder.#createNeutralLUT(gl);
 		this.texture = neutralTexture;
+		this.gl = gl;
 
 		const btn = this.#createTextureButton('Neutral LUT', neutralTexture);
 		this.#selectTexture(btn, neutralTexture);
@@ -555,6 +591,42 @@ class LUTTexturesHolder {
 		this.container.appendChild(button);
 
 		return button;
+	}
+
+	/**
+	 * Creates LUT from image
+	 * @param {HTMLImageElement} img
+	 * @param {string} name Name to display on button
+	 */
+	addLUTFromImage(img, name) {
+		const size = 16;
+		const gl = this.gl;
+		const tex = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_3D, tex);
+
+		gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+		gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA8, size, size, size);
+		for (let z=0; z<size; z++) {
+			gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, z * img.width / size);
+			gl.pixelStorei(gl.UNPACK_ROW_LENGTH, img.width / size);
+			gl.texSubImage3D(
+				gl.TEXTURE_3D,
+				0,							// mip level
+				0,							// x offset
+				0,							// y offset
+				z,							// z offset
+				size,						// width
+				size,						// height
+				1, 							// depth
+				gl.RGBA,
+				gl.UNSIGNED_BYTE,
+				img,
+			);
+		}
+
+		this.#createTextureButton(name, tex);
 	}
 
 	/**

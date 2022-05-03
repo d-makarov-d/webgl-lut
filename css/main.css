@@ -29,6 +29,14 @@
     margin-top: 12px;
 }
 
+.file_select {
+    position: relative;
+    background-color: green;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
 .btn_selected {
     background-color: green;
 }
