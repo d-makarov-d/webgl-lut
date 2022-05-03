@@ -20,3 +20,15 @@
     right: 0;
     background-color: rgba(220, 20, 60, 0.3);
 }
+
+.lut_btn {
+    --padding-horizontal: 8px;
+    width: calc(100% - var(--padding-horizontal) * 2);
+    -ms-transform: translateX(var(--padding-horizontal));
+    transform: translateX(var(--padding-horizontal));
+    margin-top: 12px;
+}
+
+.btn_selected {
+    background-color: green;
+}

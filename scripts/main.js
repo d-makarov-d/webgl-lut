@@ -5,6 +5,7 @@ const { mat4 } = glMatrix;
  */
 function start() {
 	const canvas = document.getElementById("glcanvas");
+	const btnContainer = document.getElementById("btn_container");
 
 	// Init WebGL context
 	const gl = initWebGL(canvas);
@@ -16,6 +17,8 @@ function start() {
 	if (!gl) {
 		alert("Unable to initialize WebGL. Your browser may not support it.");
 	}
+
+	const textureHolder = new LUTTexturesHolder(gl, btnContainer);
 
 	const figure = new TexturedCube(gl);
 	const texture = loadTexture(gl, 'https://raw.githubusercontent.com/d-makarov-d/webgl-lut/master/res/box_tex1.png');
@@ -37,7 +40,7 @@ function start() {
 		gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 		drawSingleFigureScene(gl, shaderProgram, figure, texture, sceneConfig);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-		drawFromFramebuffer(gl, framebuffer, fbTexture,  programFlat);
+		drawFromFramebuffer(gl, framebuffer, fbTexture, textureHolder.currentTexture(), programFlat);
 
 		requestAnimationFrame(render);
 	}
@@ -53,7 +56,7 @@ function initWebGL(canvas) {
 	let gl = null;
 
 	try {
-		gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+		gl = canvas.getContext("webgl2") || canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
 	} catch(e) {}
 
 	if (!gl) {
@@ -159,17 +162,29 @@ function drawSingleFigureScene(
  * @param {RenderingContext} gl
  * @param {WebGLFramebuffer} framebuffer
  * @param {WebGLTexture} texture
+ * @param {WebGLTexture} lut LUT 3D texture
  * @param {WebGLProgram} program
  */
-function drawFromFramebuffer(gl, framebuffer, texture, program) {
+function drawFromFramebuffer(
+	gl,
+	framebuffer,
+	texture,
+	lut,
+	program
+) {
 	gl.clearColor(0.0, 0.0, 0.0, 1.0);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 	gl.useProgram(program);
 
+	gl.uniform1i(gl.getUniformLocation(program, 'uSampler'), 0);
+	gl.uniform1i(gl.getUniformLocation(program, 'uSamplerLUT'), 1);
+
 	gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_2D, texture);
-	gl.uniform1i(gl.getUniformLocation(program, 'uSampler'), 0);
+
+	gl.activeTexture(gl.TEXTURE0 + 1);
+	gl.bindTexture(gl.TEXTURE_3D, lut);
 
 	const vertex = [
 		-1, -1,
@@ -480,11 +495,14 @@ function createFramebuffer (gl, width, height) {
 	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-	gl.texImage2D(
-		gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0,
-		gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null
-	);
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, texture, 0);
+	if (typeof gl === 'WebGLRenderingContext') {
+		// WebGL 1 does not put depth buffer by default
+		gl.texImage2D(
+			gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0,
+			gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null
+		);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, texture, 0);
+	}
 
 	// Attach depth buffer
 	const depthBuffer = gl.createRenderbuffer();
@@ -493,6 +511,87 @@ function createFramebuffer (gl, width, height) {
 	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
 	return {fb: framebuffer, tx: texture};
+}
+
+class LUTTexturesHolder {
+	/**
+	 * @param {RenderingContext} gl
+	 * @param {HTMLElement} container Container For buttons
+	 */
+	constructor(gl, container) {
+		this.container = container;
+		this.buttons = [];
+		const neutralTexture = LUTTexturesHolder.#createNeutralLUT(gl);
+		this.texture = neutralTexture;
+
+		const btn = this.#createTextureButton('Neutral LUT', neutralTexture);
+		this.#selectTexture(btn, neutralTexture);
+	}
+
+	/**
+	 * Return currently selected LUT texture
+	 * @return {WebGLTexture}
+	 */
+	currentTexture() {
+		return this.texture;
+	}
+
+	/**
+	 * Creates a button to activate the texture
+	 * @param {string} name Name on the button
+	 * @param {WebGLTexture} texture
+	 */
+	#createTextureButton(name, texture) {
+		const button = document.createElement("button");
+		button.classList.add("lut_btn");
+		button.innerHTML = name;
+		this.buttons.push(button);
+
+		const classThis = this;
+		button.addEventListener("click", () => {
+			classThis.#selectTexture(button, texture);
+		});
+
+		this.container.appendChild(button);
+
+		return button;
+	}
+
+	/**
+	 * Create neutral LUT 3D, 16x16x16
+	 * @param {RenderingContext} gl
+	 * @return {WebGLTexture}
+	 */
+	static #createNeutralLUT(gl) {
+		const {width, height, depth} = {width: 16, height: 16, depth:16}
+		const tex = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_3D, tex);
+
+		gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+		const data = new Uint8Array(width * height * depth * 4);
+		for (let x=0; x<width; x++) {
+			for (let y = 0; y < height; y++) {
+				for (let z = 0; z < depth; z++) {
+					data[(x + y * height + z * height * depth) * 4] = x / (width - 1) * 255;
+					data[(x + y * height + z * height * depth) * 4 + 1] = y / (height - 1) * 255;
+					data[(x + y * height + z * height * depth) * 4 + 2] = z / (depth - 1) * 255;
+					data[(x + y * height + z * height * depth) * 4 + 3] = 255;
+				}
+			}
+		}
+
+		gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA, width, height, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+
+		return tex;
+	}
+
+	#selectTexture(button, texture) {
+		this.texture = texture;
+		this.buttons.forEach((btn) => btn.classList.remove("btn_selected"));
+		button.classList.add("btn_selected");
+	}
 }
 
 const vertexShader = `
@@ -520,20 +619,26 @@ const fragmentShader = `
     }
 `;
 
-const vertexFlat = `
-    attribute vec4 aPosition;
-    varying vec2 vTextureCoord;
+const vertexFlat = `#version 300 es
+    in vec4 aPosition;
+    out vec2 vTextureCoord;
 
     void main() {
       gl_Position = aPosition;
       vTextureCoord = aPosition.xy * 0.5 + 0.5;
     }    
 `;
-const fragmentFlat = `
+const fragmentFlat = `#version 300 es
 		precision mediump float;
-		varying vec2 vTextureCoord;
+		in vec2 vTextureCoord;
 		uniform sampler2D uSampler;
+		uniform mediump sampler3D uSamplerLUT;
+		
+		out vec4 outColor;
 		void main() {
-    		gl_FragColor = texture2D(uSampler, vTextureCoord);
+				vec4 color = texture(uSampler, vTextureCoord);
+				vec3 lutSize = vec3(textureSize(uSamplerLUT, 0));
+				vec3 coordOnLUT = (color.rgb * float(lutSize - 1.0) + 0.5)/ lutSize;
+    		outColor = texture(uSamplerLUT, coordOnLUT);
 		}
 `;
